@@ -26,8 +26,8 @@ struct ContentView: View {
                 }
             }
 
-            CustomScrollView(attribute: self.$attribute) {
-                ForEach(0...10, id: \.self) { index in
+            CustomScrollView(attribute: self.$attribute, showIndicators: true) {
+                ForEach(0...100, id: \.self) { index in
                     VStack {
                         Text("Item \(index)")
                             .padding()
@@ -64,12 +64,15 @@ public struct CustomScrollView <Content: View> : View {
     @State var contentOffset: CGFloat = .zero
     @State var dragDistance: CGFloat = .zero
     @State var scrollHeight: CGFloat = .zero
+    var showIndicators: Bool = true
     let content: Content
     @Binding var attribute: CustomScrollAttribute
+    @State var indicatorOpactiy: Double = 0.0
     
-    public init(attribute: Binding<CustomScrollAttribute>, @ViewBuilder content: ()-> Content) {
+    public init(attribute: Binding<CustomScrollAttribute>, showIndicators: Bool = true, @ViewBuilder content: ()-> Content) {
         self.content = content()
         self._attribute = attribute
+        self.showIndicators = showIndicators
     }
     
     public var body: some View {
@@ -116,12 +119,14 @@ public struct CustomScrollView <Content: View> : View {
     var indicator: some View {
         HStack(alignment: .top) {
             Spacer()
-            RoundedRectangle(cornerRadius: 7)
+            RoundedRectangle(cornerRadius: 15)
                 .frame(width: 3, height: self.indicatorHeight) //88% of the content height
                 .foregroundColor(Color.black.opacity(0.35))
-                .padding(.trailing, 3)
+                .padding(.trailing, 5)
                 .offset(y: self.indicatorOffsetY)
                 .animation(.spring())
+                .opacity(self.allowIndicators ? indicatorOpactiy : 0.0)
+                .animation(self.indicatorOpactiy == 1.0 ? .easeInOut : Animation.easeInOut.delay(2))
         }
     }
     
@@ -143,6 +148,10 @@ public struct CustomScrollView <Content: View> : View {
         return height > minHeight ? height : minHeight
     }
     
+    private var allowIndicators: Bool {
+        self.showIndicators && self.contentHeight - self.scrollHeight > 0
+    }
+    
     func updateContentHeight(_ height: CGFloat, scrollHeight: CGFloat) {
         self.contentHeight = height
         self.scrollHeight = scrollHeight
@@ -150,12 +159,14 @@ public struct CustomScrollView <Content: View> : View {
     
     func onChanged(_ value: DragGesture.Value) {
         self.dragDistance = value.location.y - value.startLocation.y
+        self.indicatorOpactiy = 1.0
     }
     
     func onEnded(_ value: DragGesture.Value, scrollHeight: CGFloat) {
         self.dragDistance = .zero
         let predictedDragDistance = value.predictedEndLocation.y - value.startLocation.y
         self.updateContentOffset(dragDistance: predictedDragDistance, scrollHeight: scrollHeight)
+        self.indicatorOpactiy = 0.0
     }
     
     func updateContentOffset(dragDistance: CGFloat, scrollHeight: CGFloat) {
