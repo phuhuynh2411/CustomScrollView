@@ -13,7 +13,7 @@ struct ContentView: View {
     
     var body: some View {
         VStack {
-            HStack {
+            VStack {
                 Button(action: {
                     self.attribute.scrollToBottom()
                 }) {
@@ -24,32 +24,29 @@ struct ContentView: View {
                 }) {
                     Text("Scroll to top")
                 }
+                Button(action: {
+                    self.attribute.scrollTo(y: 200)
+                }) {
+                    Text("Scroll to y: 200")
+                }
             }
-
+            .padding()
+            
             CustomScrollView(attribute: self.$attribute, showIndicators: true) {
                 ForEach(0...100, id: \.self) { index in
                     VStack {
                         Text("Item \(index)")
                             .padding()
                             .background(Color.yellow)
+                            .onTapGesture {
+                        }
                         Divider()
                     }
-
+                    
                 }
             }
-
+            
         }
-//        ScrollView {
-//            ForEach(0...2000, id: \.self) { index in
-//                               VStack {
-//                                   Text("Item \(index)")
-//                                       .padding()
-//                                       .background(Color.yellow)
-//                                   Divider()
-//                               }
-//
-//                           }
-//        }
     }
 }
 
@@ -67,7 +64,14 @@ public struct CustomScrollView <Content: View> : View {
     var showIndicators: Bool = true
     let content: Content
     @Binding var attribute: CustomScrollAttribute
+    
     @State var indicatorOpactiy: Double = 0.0
+    @State var indicatorScale: CGFloat = 1.0
+    
+    @State var lastScroll: Date = Date()
+    @State var dragIndicator: Bool = false
+    @State var indicatorOffset: CGFloat = .zero
+    @State var indicatorDragDistance: CGFloat = .zero
     
     public init(attribute: Binding<CustomScrollAttribute>, showIndicators: Bool = true, @ViewBuilder content: ()-> Content) {
         self.content = content()
@@ -79,7 +83,7 @@ public struct CustomScrollView <Content: View> : View {
         GeometryReader { proxy in
             ZStack(alignment: .top) {
                 self.vertical(proxy)
-                self.indicator
+                self.indicator(proxy)
             }
             .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .top)
         }
@@ -109,6 +113,11 @@ public struct CustomScrollView <Content: View> : View {
                 self.attribute.isTop = false
             }
         }
+        .onReceive(self.attribute.$scrollToY) { value in
+            if value > .zero {
+                self.scrollTo(y: value)
+            }
+        }
         .gesture(
             DragGesture()
                 .onChanged { self.onChanged($0) }
@@ -116,17 +125,22 @@ public struct CustomScrollView <Content: View> : View {
         )
     }
     
-    var indicator: some View {
+    func indicator(_ proxy:GeometryProxy) -> some View {
         HStack(alignment: .top) {
             Spacer()
-            RoundedRectangle(cornerRadius: 15)
+            RoundedRectangle(cornerRadius: 2)
                 .frame(width: 3, height: self.indicatorHeight) //88% of the content height
                 .foregroundColor(Color.black.opacity(0.35))
                 .padding(.trailing, 5)
                 .offset(y: self.indicatorOffsetY)
                 .animation(.spring())
+                .scaleEffect(x: self.indicatorScale, y: 1)
+                .gesture(DragGesture()
+                    .onChanged { self.onIndicatorChanged(value: $0)}
+                    .onEnded { self.onIndicatorEnded(value: $0, scrollHeight: proxy.size.height) }
+                )
                 .opacity(self.allowIndicators ? indicatorOpactiy : 0.0)
-                .animation(self.indicatorOpactiy == 1.0 ? .easeInOut : Animation.easeInOut.delay(2))
+                .animation(.easeInOut)
         }
     }
     
@@ -136,7 +150,7 @@ public struct CustomScrollView <Content: View> : View {
         let topLimit = self.contentHeight - self.scrollHeight
         
         let offset = (self.scrollHeight - self.indicatorHeight) * distance / topLimit
-        return -offset
+        return self.dragIndicator ? self.indicatorOffset + self.indicatorDragDistance : -offset
     }
     
     var indicatorHeight: CGFloat {
@@ -160,13 +174,17 @@ public struct CustomScrollView <Content: View> : View {
     func onChanged(_ value: DragGesture.Value) {
         self.dragDistance = value.location.y - value.startLocation.y
         self.indicatorOpactiy = 1.0
+        self.lastScroll = Date()
+        self.indicatorOffset = self.indicatorOffsetY
     }
     
     func onEnded(_ value: DragGesture.Value, scrollHeight: CGFloat) {
         self.dragDistance = .zero
         let predictedDragDistance = value.predictedEndLocation.y - value.startLocation.y
         self.updateContentOffset(dragDistance: predictedDragDistance, scrollHeight: scrollHeight)
-        self.indicatorOpactiy = 0.0
+        
+        self.indicatorOffset = self.indicatorOffsetY
+        self.hideIndicator()
     }
     
     func updateContentOffset(dragDistance: CGFloat, scrollHeight: CGFloat) {
@@ -183,11 +201,73 @@ public struct CustomScrollView <Content: View> : View {
             self.contentOffset = proposedOffset
         }
     }
+    
+    func scrollTo(y: CGFloat) {
+        let difference = self.contentHeight - self.scrollHeight
+        if y < .zero {
+            self.contentOffset = .zero
+        } else if y > difference {
+            self.contentOffset = -difference
+        }
+        self.contentOffset = -y
+        
+        self.attribute.scrollToY = .zero
+    }
+    
+    func onIndicatorChanged(value: DragGesture.Value) {
+        self.indicatorScale = 3.0
+        self.lastScroll = Date()
+        self.dragIndicator = true
+        self.indicatorDragDistance = value.location.y - value.startLocation.y
+        
+        // Update content off set
+        let proposedOffset = self.indicatorOffset + indicatorDragDistance
+        let topLimit = self.contentHeight - self.scrollHeight
+        let offset = topLimit * proposedOffset / self.scrollHeight
+        self.contentOffset = -offset
+    }
+    
+    func onIndicatorEnded(value: DragGesture.Value, scrollHeight: CGFloat) {
+        self.indicatorScale = 1.0
+        self.indicatorDragDistance = .zero
+        let predictedDragDistance = value.predictedEndLocation.y - value.startLocation.y
+        
+        self.updateIndicatorOffset(dragDistance: predictedDragDistance, scrollHeight: scrollHeight)
+        self.dragIndicator = false
+        self.hideIndicator()
+    }
+    
+    func hideIndicator() {
+        // Hide the indicator after 3 seconds
+        // if user stops dragging
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            let a = self.lastScroll.distance(to: Date())
+            self.indicatorOpactiy = a > 2.0 ? 0.0 : 1.0
+        }
+    }
+    
+    func updateIndicatorOffset(dragDistance: CGFloat, scrollHeight: CGFloat) {
+        let proposedOffset = self.indicatorOffset + dragDistance
+        let topLimit = self.contentHeight - self.scrollHeight
+        print(proposedOffset)
+        if proposedOffset < .zero {
+            self.indicatorOffset = .zero
+            self.contentOffset = .zero
+        } else if abs(proposedOffset) > self.scrollHeight - self.indicatorHeight {
+            self.indicatorOffset = self.scrollHeight - self.indicatorHeight
+            self.contentOffset = -topLimit
+        } else {
+            self.indicatorOffset = proposedOffset
+            let offset = topLimit * proposedOffset / self.scrollHeight
+            self.contentOffset =  -offset
+        }
+    }
 }
 
 public class CustomScrollAttribute {
     @Published var isBottom: Bool = false
     @Published var isTop: Bool = false
+    @Published var scrollToY: CGFloat = .zero
     
     public func scrollToBottom() {
         self.isBottom = true
@@ -195,6 +275,10 @@ public class CustomScrollAttribute {
     
     public func scrollToTop() {
         self.isTop = true
+    }
+    
+    public func scrollTo(y: CGFloat) {
+        self.scrollToY = y
     }
 }
 
