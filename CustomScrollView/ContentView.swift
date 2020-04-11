@@ -33,7 +33,7 @@ struct ContentView: View {
             .padding()
             
             CustomScrollView(attribute: self.$attribute, showIndicators: true) {
-                ForEach(0...10, id: \.self) { index in
+                ForEach(0...100, id: \.self) { index in
                     VStack {
                         Text("Item \(index)")
                             .padding()
@@ -97,6 +97,7 @@ public struct CustomScrollView <Content: View> : View {
         .modifier(ContentHeightGetter())
         .onPreferenceChange(ContentHeightKey.self) {
             self.updateContentHeight($0,scrollHeight: proxy.size.height)
+            self.updateContentOffset(dragDistance: 0, scrollHeight: proxy.size.height)
         }
         .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
         .offset(y: self.contentOffset + self.dragDistance)
@@ -133,7 +134,7 @@ public struct CustomScrollView <Content: View> : View {
                 .frame(width: 3, height: self.indicatorHeight) //88% of the content height
                 .foregroundColor(Color.black.opacity(0.35))
                 .padding(.trailing, 5)
-                .offset(y: self.indicatorOffsetY)
+                .offset(y: self.indicatorOffset + self.indicatorDragDistance)
                 .animation(.spring())
                 .scaleEffect(x: self.indicatorScale, y: 1)
                 .gesture(DragGesture()
@@ -184,7 +185,6 @@ public struct CustomScrollView <Content: View> : View {
         let predictedDragDistance = value.predictedEndLocation.y - value.startLocation.y
         self.updateContentOffset(dragDistance: predictedDragDistance, scrollHeight: scrollHeight)
         
-        self.indicatorOffset = self.indicatorOffsetY
         self.hideIndicator()
     }
     
@@ -201,6 +201,7 @@ public struct CustomScrollView <Content: View> : View {
             }
             self.contentOffset = proposedOffset
         }
+        self.indicatorOffset = self.indicatorOffsetY
     }
     
     func scrollTo(y: CGFloat) {
