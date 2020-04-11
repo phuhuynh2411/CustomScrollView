@@ -13,7 +13,7 @@ struct ContentView: View {
     
     var body: some View {
         VStack {
-            VStack {
+            VStack(alignment: .leading) {
                 Button(action: {
                     self.attribute.scrollToBottom()
                 }) {
@@ -33,7 +33,7 @@ struct ContentView: View {
             .padding()
             
             CustomScrollView(attribute: self.$attribute, showIndicators: true) {
-                ForEach(0...100, id: \.self) { index in
+                ForEach(0...10, id: \.self) { index in
                     VStack {
                         Text("Item \(index)")
                             .padding()
@@ -103,6 +103,7 @@ public struct CustomScrollView <Content: View> : View {
         .animation(.spring())
         .onReceive(self.attribute.$isBottom) { value in
             if value {
+                guard self.contentHeight > self.scrollHeight else { return }
                 self.contentOffset =  self.scrollHeight - self.contentHeight
                 self.attribute.isBottom = false
             }
